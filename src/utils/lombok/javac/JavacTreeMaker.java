@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2018 The Project Lombok Authors.
+ * Copyright (C) 2013-2020 The Project Lombok Authors.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -441,7 +441,11 @@ public class JavacTreeMaker {
 	//javac versions: 6-8
 	private static final MethodId<JCVariableDecl> VarDef = MethodId("VarDef");
 	public JCVariableDecl VarDef(JCModifiers mods, Name name, JCExpression vartype, JCExpression init) {
-		return invoke(VarDef, mods, name, vartype, init);
+		JCVariableDecl varDef = invoke(VarDef, mods, name, vartype, init);
+		// We use 'position of the type is -1' as indicator in delombok that the original node was written using JDK10's 'var' feature, because javac desugars 'var' to the real type and doesn't leave any markers other than the
+		// node position to indicate that it did so. Unfortunately, that means vardecls we generate look like 'var' to delombok. Adjust the position to avoid this.
+		if (varDef.vartype != null && varDef.vartype.pos == -1) varDef.vartype.pos = 0;
+		return varDef;
 	}
 	
 	//javac versions: 8
@@ -858,6 +862,12 @@ public class JavacTreeMaker {
 	private static final MethodId<JCAnnotation> TypeAnnotationWithAttributeOnly = MethodId("TypeAnnotation", JCAnnotation.class, Attribute.class);
 	public JCAnnotation TypeAnnotation(Attribute a) {
 		return invoke(TypeAnnotationWithAttributeOnly, a);
+	}
+	
+	//javac versions: 8
+	private static final MethodId<JCExpression> AnnotatedType = MethodId("AnnotatedType", JCExpression.class, List.class, JCExpression.class);
+	public JCExpression AnnotatedType(List<JCAnnotation> annotations, JCExpression underlyingType) {
+		return invoke(AnnotatedType, annotations, underlyingType);
 	}
 	
 	//javac versions: 6-8

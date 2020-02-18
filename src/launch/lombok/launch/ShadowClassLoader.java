@@ -364,16 +364,20 @@ class ShadowClassLoader extends ClassLoader {
 			FileInputStream jar = new FileInputStream(jarLoc);
 			try {
 				ZipInputStream zip = new ZipInputStream(jar);
-				while (true) {
-					ZipEntry entry = zip.getNextEntry();
-					if (entry == null) {
-						jarLocCache.put(key, false);
-						return false;
+				try {
+					while (true) {
+						ZipEntry entry = zip.getNextEntry();
+						if (entry == null) {
+							jarLocCache.put(key, false);
+							return false;
+						}
+						if (!"META-INF/ShadowClassLoader".equals(entry.getName())) continue;
+						boolean v = sclFileContainsSuffix(zip, suffix);
+						jarLocCache.put(key, v);
+						return v;
 					}
-					if (!"META-INF/ShadowClassLoader".equals(entry.getName())) continue;
-					boolean v = sclFileContainsSuffix(zip, suffix);
-					jarLocCache.put(key, v);
-					return v;
+				} finally {
+					zip.close();
 				}
 			} finally {
 				jar.close();
@@ -436,14 +440,14 @@ class ShadowClassLoader extends ClassLoader {
 		Enumeration<URL> sec = super.getResources(name);
 		while (sec.hasMoreElements()) {
 			URL item = sec.nextElement();
-			if (!partOfShadow(item.toString(), name)) vector.add(item);
+			if (isPartOfShadowSuffix(item.toString(), name, sclSuffix)) vector.add(item);
 		}
 		
 		if (altName != null) {
 			Enumeration<URL> tern = super.getResources(altName);
 			while (tern.hasMoreElements()) {
 				URL item = tern.nextElement();
-				if (!partOfShadow(item.toString(), altName)) vector.add(item);
+				if (isPartOfShadowSuffix(item.toString(), altName, sclSuffix)) vector.add(item);
 			}
 		}
 		

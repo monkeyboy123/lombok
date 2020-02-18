@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2019 The Project Lombok Authors.
+ * Copyright (C) 2009-2020 The Project Lombok Authors.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -57,6 +57,7 @@ public class EclipsePatcher implements AgentLauncher.AgentLaunchable {
 		String[] args = agentArgs == null ? new String[0] : agentArgs.split(":");
 		boolean forceEcj = false;
 		boolean forceEclipse = false;
+		
 		for (String arg : args) {
 			if (arg.trim().equalsIgnoreCase("ECJ")) forceEcj = true;
 			if (arg.trim().equalsIgnoreCase("ECLIPSE")) forceEclipse = true;
@@ -80,6 +81,7 @@ public class EclipsePatcher implements AgentLauncher.AgentLaunchable {
 		sm.registerTransformer(instrumentation);
 		sm.setFilter(new Filter() {
 			@Override public boolean shouldTransform(ClassLoader loader, String className, Class<?> classBeingDefined, ProtectionDomain protectionDomain, byte[] classfileBuffer) {
+				if (loader != null && loader.getClass().getName().startsWith("org.sonar.classloader.")) return false; // Relevant to bug #2351
 				if (!(loader instanceof URLClassLoader)) return true;
 				ClassLoader parent = loader.getParent();
 				if (parent == null) return true;
@@ -122,6 +124,7 @@ public class EclipsePatcher implements AgentLauncher.AgentLaunchable {
 		patchEcjTransformers(sm, ecjOnly);
 		patchExtensionMethod(sm, ecjOnly);
 		patchRenameField(sm);
+		patchNullCheck(sm);
 		
 		if (reloadExistingClasses) sm.reloadClasses(instrumentation);
 	}
@@ -774,4 +777,24 @@ public class EclipsePatcher implements AgentLauncher.AgentLaunchable {
 				.build());
 		}
 	}
+
+	private static void patchNullCheck(ScriptManager sm) {
+		/* Avoid warnings caused by the null check generated for lombok.NonNull if NonNullByDefault is used. */
+
+		/* Avoid "Redundant null check: comparing '@NonNull String' against null" */
+		sm.addScript(ScriptBuilder.exitEarly()
+				.target(new MethodTarget("org.eclipse.jdt.internal.compiler.problem.ProblemReporter", "expressionNonNullComparison", "boolean", "org.eclipse.jdt.internal.compiler.ast.Expression", "boolean"))
+				.decisionMethod(new Hook("lombok.launch.PatchFixesHider$PatchFixes", "isGenerated", "boolean", "org.eclipse.jdt.internal.compiler.ast.ASTNode"))
+				.valueMethod(new Hook("lombok.launch.PatchFixesHider$PatchFixes", "returnTrue", "boolean", "java.lang.Object"))
+				.request(StackRequest.PARAM1)
+				.transplant().build());
+
+		/* Avoid "Dead code" */
+		sm.addScript(ScriptBuilder.exitEarly()
+				.target(new MethodTarget("org.eclipse.jdt.internal.compiler.problem.ProblemReporter", "fakeReachable", "void", "org.eclipse.jdt.internal.compiler.ast.ASTNode"))
+				.decisionMethod(new Hook("lombok.launch.PatchFixesHider$PatchFixes", "isGenerated", "boolean", "org.eclipse.jdt.internal.compiler.ast.ASTNode"))
+				.request(StackRequest.PARAM1)
+				.transplant().build());
+	}
+
 }

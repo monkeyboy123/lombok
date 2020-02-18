@@ -99,7 +99,7 @@ public class AnnotationProcessor extends AbstractProcessor {
 		private Processor processor;
 		
 		@Override String getName() {
-			return "sun/apple javac 1.6";
+			return "OpenJDK javac";
 		}
 		
 		@Override boolean want(ProcessingEnvironment procEnv, List<String> delayedWarnings) {
@@ -112,7 +112,7 @@ public class AnnotationProcessor extends AbstractProcessor {
 			
 			try {
 				ClassLoader classLoader = findAndPatchClassLoader(javacProcEnv);
-				processor = (Processor) Class.forName("lombok.javac.apt.LombokProcessor", false, classLoader).newInstance();
+				processor = (Processor) Class.forName("lombok.javac.apt.LombokProcessor", false, classLoader).getConstructor().newInstance();
 			} catch (Exception e) {
 				delayedWarnings.add("You found a bug in lombok; lombok.javac.apt.LombokProcessor is not available. Lombok will not run during this compilation: " + trace(e));
 				return false;

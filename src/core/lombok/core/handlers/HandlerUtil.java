@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2018 The Project Lombok Authors.
+ * Copyright (C) 2013-2020 The Project Lombok Authors.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -38,6 +38,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.ToString;
 import lombok.Value;
+import lombok.With;
 import lombok.core.AST;
 import lombok.core.AnnotationValues;
 import lombok.core.JavaIdentifiers;
@@ -47,7 +48,6 @@ import lombok.core.configuration.ConfigurationKey;
 import lombok.core.configuration.FlagUsageType;
 import lombok.experimental.Accessors;
 import lombok.experimental.FieldDefaults;
-import lombok.experimental.Wither;
 
 /**
  * Container for static utility methods useful for some of the standard lombok handlers, regardless of
@@ -76,10 +76,10 @@ public class HandlerUtil {
 		return 43;
 	}
 	
-	public static final List<String> NONNULL_ANNOTATIONS, BASE_COPYABLE_ANNOTATIONS;
+	public static final List<String> NONNULL_ANNOTATIONS, BASE_COPYABLE_ANNOTATIONS, COPY_TO_SETTER_ANNOTATIONS;
 	static {
 		NONNULL_ANNOTATIONS = Collections.unmodifiableList(Arrays.asList(new String[] {
-			"android.annotation.NonNull",
+			"androidx.annotation.NonNull",
 			"android.support.annotation.NonNull",
 			"com.sun.istack.internal.NotNull",
 			"edu.umd.cs.findbugs.annotations.NonNull",
@@ -92,9 +92,11 @@ public class HandlerUtil {
 			"org.jetbrains.annotations.NotNull",
 			"org.jmlspecs.annotation.NonNull",
 			"org.netbeans.api.annotations.common.NonNull",
-			"org.springframework.lang.NonNull"
+			"org.springframework.lang.NonNull",
 		}));
 		BASE_COPYABLE_ANNOTATIONS = Collections.unmodifiableList(Arrays.asList(new String[] {
+			"androidx.annotation.NonNull",
+			"androidx.annotation.Nullable",
 			"android.support.annotation.NonNull",
 			"android.support.annotation.Nullable",
 			"edu.umd.cs.findbugs.annotations.NonNull",
@@ -104,8 +106,11 @@ public class HandlerUtil {
 			"javax.annotation.Nonnull",
 			"javax.annotation.Nullable",
 			"lombok.NonNull",
+			"org.jmlspecs.annotation.NonNull",
+			"org.jmlspecs.annotation.Nullable",
 			// To update Checker Framework annotations, run:
 			// grep --recursive --files-with-matches -e '^@Target\b.*TYPE_USE' $CHECKERFRAMEWORK/checker/src/main/java  $CHECKERFRAMEWORK/framework/src/main/java | grep '\.java$' | sed 's/.*\/java\//\t\t\t"/' | sed 's/\.java$/",/' | sed 's/\//./g' | sort
+			// Only add new annotations, do not remove annotations that have been removed from the lastest version of the Checker Framework.
 			"org.checkerframework.checker.compilermsgs.qual.CompilerMessageKey",
 			"org.checkerframework.checker.compilermsgs.qual.CompilerMessageKeyBottom",
 			"org.checkerframework.checker.compilermsgs.qual.UnknownCompilerMessageKey",
@@ -215,6 +220,7 @@ public class HandlerUtil {
 			"org.checkerframework.checker.signature.qual.FieldDescriptor",
 			"org.checkerframework.checker.signature.qual.FieldDescriptorForPrimitive",
 			"org.checkerframework.checker.signature.qual.FieldDescriptorForPrimitiveOrArrayInUnnamedPackage",
+			"org.checkerframework.checker.signature.qual.FqBinaryName",
 			"org.checkerframework.checker.signature.qual.FullyQualifiedName",
 			"org.checkerframework.checker.signature.qual.Identifier",
 			"org.checkerframework.checker.signature.qual.IdentifierOrArray",
@@ -224,8 +230,11 @@ public class HandlerUtil {
 			"org.checkerframework.checker.signature.qual.SignatureBottom",
 			"org.checkerframework.checker.signedness.qual.Constant",
 			"org.checkerframework.checker.signedness.qual.PolySignedness",
+			"org.checkerframework.checker.signedness.qual.PolySigned",
 			"org.checkerframework.checker.signedness.qual.Signed",
 			"org.checkerframework.checker.signedness.qual.SignednessBottom",
+			"org.checkerframework.checker.signedness.qual.SignednessGlb",
+			"org.checkerframework.checker.signedness.qual.SignedPositive",
 			"org.checkerframework.checker.signedness.qual.UnknownSignedness",
 			"org.checkerframework.checker.signedness.qual.Unsigned",
 			"org.checkerframework.checker.tainting.qual.PolyTainted",
@@ -298,7 +307,13 @@ public class HandlerUtil {
 			"org.jetbrains.annotations.NotNull",
 			"org.jetbrains.annotations.Nullable",
 			"org.springframework.lang.NonNull",
-			"org.springframework.lang.Nullable"
+			"org.springframework.lang.Nullable",
+			"org.netbeans.api.annotations.common.NonNull",
+			"org.netbeans.api.annotations.common.NullAllowed",
+		}));
+		COPY_TO_SETTER_ANNOTATIONS = Collections.unmodifiableList(Arrays.asList(new String[] {
+			"com.fasterxml.jackson.annotation.JsonProperty",
+			"com.fasterxml.jackson.annotation.JsonSetter",
 		}));
 	}
 	
@@ -402,7 +417,7 @@ public class HandlerUtil {
 	@SuppressWarnings({"all", "unchecked", "deprecation"})
 	public static final List<String> INVALID_ON_BUILDERS = Collections.unmodifiableList(
 			Arrays.<String>asList(
-			Getter.class.getName(), Setter.class.getName(), Wither.class.getName(),
+			Getter.class.getName(), Setter.class.getName(), With.class.getName(), "lombok.experimental.Wither",
 			ToString.class.getName(), EqualsAndHashCode.class.getName(), 
 			RequiredArgsConstructor.class.getName(), AllArgsConstructor.class.getName(), NoArgsConstructor.class.getName(), 
 			Data.class.getName(), Value.class.getName(), "lombok.experimental.Value", FieldDefaults.class.getName()));
@@ -441,11 +456,6 @@ public class HandlerUtil {
 		
 		return null;
 	}
-	
-	/* NB: 'notnull' is not part of the pattern because there are lots of @NotNull annotations out there that are crappily named and actually mean
-	        something else, such as 'this field must not be null _when saved to the db_ but its perfectly okay to start out as such, and a no-args
-	        constructor and the implied starts-out-as-null state that goes with it is in fact mandatory' which happens with javax.validation.constraints.NotNull.
-	        Various problems with spring have also been reported. See issue #287, issue #271, and issue #43. */
 	
 	public static final String DEFAULT_EXCEPTION_FOR_NON_NULL = "java.lang.NullPointerException";
 	
@@ -498,7 +508,7 @@ public class HandlerUtil {
 	}
 	
 	/**
-	 * Generates a wither name from a given field name.
+	 * Generates a with name from a given field name.
 	 * 
 	 * Strategy:
 	 * <ul>
@@ -514,10 +524,24 @@ public class HandlerUtil {
 	 * @param accessors Accessors configuration.
 	 * @param fieldName the name of the field.
 	 * @param isBoolean if the field is of type 'boolean'. For fields of type {@code java.lang.Boolean}, you should provide {@code false}.
-	 * @return The wither name for this field, or {@code null} if this field does not fit expected patterns and therefore cannot be turned into a getter name.
+	 * @return The with name for this field, or {@code null} if this field does not fit expected patterns and therefore cannot be turned into a getter name.
 	 */
-	public static String toWitherName(AST<?, ?, ?> ast, AnnotationValues<Accessors> accessors, CharSequence fieldName, boolean isBoolean) {
+	public static String toWithName(AST<?, ?, ?> ast, AnnotationValues<Accessors> accessors, CharSequence fieldName, boolean isBoolean) {
 		return toAccessorName(ast, accessors, fieldName, isBoolean, "with", "with", false);
+	}
+	
+	/**
+	 * Generates a withBy name from a given field name.
+	 * 
+	 * Strategy: The same as the {@code toWithName} strategy, but then append {@code "By"} at the end.
+	 * 
+	 * @param accessors Accessors configuration.
+	 * @param fieldName the name of the field.
+	 * @param isBoolean if the field is of type 'boolean'. For fields of type {@code java.lang.Boolean}, you should provide {@code false}.
+	 * @return The with name for this field, or {@code null} if this field does not fit expected patterns and therefore cannot be turned into a getter name.
+	 */
+	public static String toWithByName(AST<?, ?, ?> ast, AnnotationValues<Accessors> accessors, CharSequence fieldName, boolean isBoolean) {
+		return toAccessorName(ast, accessors, fieldName, isBoolean, "with", "with", false) + "By";
 	}
 	
 	private static String toAccessorName(AST<?, ?, ?> ast, AnnotationValues<Accessors> accessors, CharSequence fieldName, boolean isBoolean,
@@ -578,7 +602,7 @@ public class HandlerUtil {
 	}
 	
 	/**
-	 * Returns all names of methods that would represent the wither for a field with the provided name.
+	 * Returns all names of methods that would represent the with for a field with the provided name.
 	 * 
 	 * For example if {@code isBoolean} is true, then a field named {@code isRunning} would produce:<br />
 	 * {@code [withRunning, withIsRunning]}
@@ -587,8 +611,25 @@ public class HandlerUtil {
 	 * @param fieldName the name of the field.
 	 * @param isBoolean if the field is of type 'boolean'. For fields of type 'java.lang.Boolean', you should provide {@code false}.
 	 */
-	public static List<String> toAllWitherNames(AST<?, ?, ?> ast, AnnotationValues<Accessors> accessors, CharSequence fieldName, boolean isBoolean) {
+	public static List<String> toAllWithNames(AST<?, ?, ?> ast, AnnotationValues<Accessors> accessors, CharSequence fieldName, boolean isBoolean) {
 		return toAllAccessorNames(ast, accessors, fieldName, isBoolean, "with", "with", false);
+	}
+	
+	/**
+	 * Returns all names of methods that would represent the withBy for a field with the provided name.
+	 * 
+	 * For example if {@code isBoolean} is true, then a field named {@code isRunning} would produce:<br />
+	 * {@code [withRunningBy, withIsRunningBy]}
+	 * 
+	 * @param accessors Accessors configuration.
+	 * @param fieldName the name of the field.
+	 * @param isBoolean if the field is of type 'boolean'. For fields of type 'java.lang.Boolean', you should provide {@code false}.
+	 */
+	public static List<String> toAllWithByNames(AST<?, ?, ?> ast, AnnotationValues<Accessors> accessors, CharSequence fieldName, boolean isBoolean) {
+		List<String> in = toAllAccessorNames(ast, accessors, fieldName, isBoolean, "with", "with", false);
+		if (!(in instanceof ArrayList)) in = new ArrayList<String>(in);
+		for (int i = 0; i < in.size(); i++) in.set(i, in.get(i) + "By");
+		return in;
 	}
 	
 	private static List<String> toAllAccessorNames(AST<?, ?, ?> ast, AnnotationValues<Accessors> accessors, CharSequence fieldName, boolean isBoolean,
@@ -624,7 +665,6 @@ public class HandlerUtil {
 		}
 		
 		return new ArrayList<String>(names);
-		
 	}
 	
 	private static List<String> toBaseNames(CharSequence fieldName, boolean isBoolean, boolean fluent) {
